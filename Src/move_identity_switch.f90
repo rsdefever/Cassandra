@@ -87,7 +87,7 @@ SUBROUTINE Identity_Switch
       STOP
    END IF
 
-   ALLOCATE(E_vdw_mol_old(2), E_vdw_mol_new(2), E_qq_mol_old(2), E_qq_mol_new(2), Stat=AllocateStatus) 
+   ALLOCATE(E_vdw_mol_old(2), E_vdw_mol_new(2), E_qq_mol_old(2), E_qq_mol_new(2), Stat=AllocateStatus)
    IF (AllocateStatus /= 0 ) THEN
       write(*,*)'memory could not be allocated for Energy VDW or QQ box arrays.'
       write(*,*)'stopping'
@@ -234,6 +234,7 @@ SUBROUTINE Identity_Switch
    ! pick a molecule INDEX at random
    ! Index molecule of species i
 
+   ! RSD TODO: What if nmols(is,ibox_i) == 0
    im_i = INT(rranf() * nmols(is,box_i)) + 1
 
    !Locate molecule of species i
@@ -243,8 +244,6 @@ SUBROUTINE Identity_Switch
    ! Step 6) Select a molecule 'alive' from species 'js' with uniform probability
    !*****************************************************************************
    im_j = INT(rranf() * nmols(js,box_j)) + 1
-
-
    lm_j = locate(im_j, js, box_j)
 
    lm_list(1) = lm_i
@@ -252,9 +251,7 @@ SUBROUTINE Identity_Switch
 
    !*****************************************************************************
    ! Step 7) Calculate initial energies of each box
-   !
    !*****************************************************************************
-
    tot_trials(box_i) = tot_trials(box_i) + 1
    tot_trials(box_j) = tot_trials(box_j) + 1
    ntrials(is,box_i)%switch = ntrials(is,box_i)%switch + 1
@@ -333,7 +330,6 @@ SUBROUTINE Identity_Switch
 
    !*****************************************************************************
    ! Step 8) Switch the two molecules by COM translation
-   !
    !*****************************************************************************
 
    ! Get the relative position of each atom in a molecule wrt to the COM
@@ -528,7 +524,7 @@ SUBROUTINE Identity_Switch
 !      END IF
       ! End of Ewald Charge code
 
-      !Intra energies are not needed for the acceptance rule aside form E_periodic,
+      !Intra energies are not needed for the acceptance rule aside from E_periodic,
       !but they must be attributed to the correct box later
 
       CALL Compute_Molecule_Bond_Energy(lm_i,is,E_bond_i)
@@ -552,43 +548,45 @@ SUBROUTINE Identity_Switch
       dE_intra_vdw = E_intra_vdw_j - E_intra_vdw_i
       dE_intra_qq = E_intra_qq_j - E_intra_qq_i
 
-      IF (box_i .NE. box_j .AND. int_vdw_sum_style(box_i) == vdw_cut_tail) THEN
-
-         nbeads_boxes(:,box_i) = nint_beads(:,box_i)
+      ! If box_i and box_j are different and either has analytical tail
+      ! corrections those need to be updated
+      IF (box_i .NE. box_j) THEN
+         ! Check box_i
+         IF (int_vdw_sum_style(box_i) == vdw_cut_tail) THEN
+            nbeads_boxes(:,box_i) = nint_beads(:,box_i)
   
-         DO i = 1, natoms(js)
-            j_type = nonbond_list(i,js)%atom_type_number
-            nint_beads(j_type,box_i) = nint_beads(j_type,box_i) + 1
-         END DO
+            DO i = 1, natoms(js)
+               j_type = nonbond_list(i,js)%atom_type_number
+               nint_beads(j_type,box_i) = nint_beads(j_type,box_i) + 1
+            END DO
 
-         DO i = 1, natoms(is)
-            i_type = nonbond_list(i,is)%atom_type_number
-            nint_beads(i_type,box_i) = nint_beads(i_type,box_i) - 1
-         END DO
+            DO i = 1, natoms(is)
+               i_type = nonbond_list(i,is)%atom_type_number
+               nint_beads(i_type,box_i) = nint_beads(i_type,box_i) - 1
+            END DO
 
-         CALL Compute_LR_correction(box_i,E_lrc_box(box_i))
-         dE_lrc(box_i) = E_lrc_box(box_i) - energy(box_i)%lrc
-
-      END IF
-
-      IF (box_i .NE. box_j .AND. int_vdw_sum_style(box_j) == vdw_cut_tail) THEN
-
-         nbeads_boxes(:,box_j) = nint_beads(:,box_j)
+            CALL Compute_LR_correction(box_i,E_lrc_box(box_i))
+            dE_lrc(box_i) = E_lrc_box(box_i) - energy(box_i)%lrc
+         ENDIF
+         ! Check box_j
+         IF (int_vdw_sum_style(box_j) == vdw_cut_tail) THEN
+            nbeads_boxes(:,box_j) = nint_beads(:,box_j)
  
-         DO i = 1, natoms(is)
-            i_type = nonbond_list(i,is)%atom_type_number
-            nint_beads(i_type,box_j) = nint_beads(i_type,box_j) + 1
-         END DO
+            DO i = 1, natoms(is)
+               i_type = nonbond_list(i,is)%atom_type_number
+               nint_beads(i_type,box_j) = nint_beads(i_type,box_j) + 1
+            END DO
 
-         DO i = 1, natoms(js)
-            j_type = nonbond_list(i,js)%atom_type_number
-            nint_beads(j_type,box_j) = nint_beads(j_type,box_j) - 1
-         END DO
+            DO i = 1, natoms(js)
+               j_type = nonbond_list(i,js)%atom_type_number
+               nint_beads(j_type,box_j) = nint_beads(j_type,box_j) - 1
+            END DO
 
-         CALL Compute_LR_correction(box_j,E_lrc_box(box_j))
-         dE_lrc(box_j) = E_lrc_box(box_j) - energy(box_j)%lrc
-
+            CALL Compute_LR_correction(box_j,E_lrc_box(box_j))
+            dE_lrc(box_j) = E_lrc_box(box_j) - energy(box_j)%lrc
+         ENDIF
       END IF
+
 
       !Compute difference with nonbonded energies only
       DO ibox = 1, nbr_boxes
