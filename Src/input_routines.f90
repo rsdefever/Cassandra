@@ -59,7 +59,7 @@ SUBROUTINE Get_Run_Name
 !******************************************************************************
 
   INTEGER :: ierr,line_nbr,nbr_entries
-  CHARACTER(120) :: line_string, line_array(20)
+  CHARACTER(STRING_LEN) :: line_string, line_array(60)
 
 
 !******************************************************************************
@@ -104,11 +104,12 @@ SUBROUTINE Get_Run_Name
 
   ENDDO
 
-  ! Create log file and write out some initial information
-  CALL Name_Files(run_name,'.log',logfile)
-  ! Create a checkpoint file to periodically write system information
-  CALL Name_Files(run_name,'.chk',checkpointfile)
+  IF (input_is_logfile) THEN
+     run_name = TRIM(run_name) // "_logfile_"
+  END IF
 
+  ! Get the checkpoint filename
+  CALL Name_Files(run_name,'.chk',checkpointfile)
 
 END SUBROUTINE Get_Run_Name
 
@@ -122,7 +123,7 @@ SUBROUTINE Get_Nspecies
 !******************************************************************************
 
   INTEGER :: ierr,line_nbr,nbr_entries, i
-  CHARACTER(120) :: line_string, line_array(20)
+  CHARACTER(STRING_LEN) :: line_string, line_array(60)
 !******************************************************************************
   WRITE(logunit,*)
   WRITE(logunit,'(A)') 'Number of species'
@@ -254,7 +255,7 @@ SUBROUTINE Get_Sim_Type
 ! ignored.
 !******************************************************************************
   INTEGER :: ierr,line_nbr,nbr_entries
-  CHARACTER(120) :: line_string, line_array(20)
+  CHARACTER(STRING_LEN) :: line_string, line_array(60)
 
 !******************************************************************************
   WRITE(logunit,*)
@@ -355,7 +356,7 @@ SUBROUTINE Get_Pair_Style
 !                 need to be stored.
 !******************************************************************************
   INTEGER :: ierr,line_nbr,nbr_entries, iassign, ibox, k
-  CHARACTER(120) :: line_string, line_array(20)
+  CHARACTER(STRING_LEN) :: line_string, line_array(60)
 
   REAL(DP), ALLOCATABLE :: ewald_tol(:)
 
@@ -405,7 +406,7 @@ SUBROUTINE Get_Pair_Style
            ! way it will be summed / truncated, and the remaining to parameters associated with
            ! the sum method
 
-           IF (line_array(1) == 'lj' .OR. line_array(1) == 'LJ') THEN
+           IF ( line_array(1) == 'LJ' .OR. line_array(1) == 'Lj' .OR. line_array(1) == 'lj' ) THEN
               vdw_style(ibox) = 'LJ'
               int_vdw_style(ibox) = vdw_lj
               WRITE(logunit,'(A,2x,A,A,I3)') 'VDW style used is: ',vdw_style(ibox), 'in box:', ibox
@@ -475,6 +476,8 @@ SUBROUTINE Get_Pair_Style
                     rcut9(ibox) = rcut3(ibox) * rcut3(ibox) * rcut3(ibox)
                  ELSE IF (vdw_sum_style(ibox) == 'cut_shift') THEN
                     int_vdw_sum_style(ibox) = vdw_cut_shift
+                 ELSE IF (vdw_sum_style(ibox) == 'cut_shift-force') THEN
+                    int_vdw_sum_style(ibox) = vdw_cut_shift_force
                  ELSE
                     err_msg = ''
                     err_msg(1) = 'Keyword ' // TRIM(line_array(2)) // ' on line number ' // &
@@ -502,8 +505,8 @@ SUBROUTINE Get_Pair_Style
                  CALL Clean_Abort(err_msg,'Get_Pair_Style')
               ENDIF
 
-           ELSEIF (line_array(1) == 'mie' .OR. line_array(1) == 'Mie') THEN
-              vdw_style(ibox) = 'Mie'
+           ELSEIF ( line_array(1) == 'MIE' .OR. line_array(1) == 'Mie' .OR. line_array(1) == 'mie' ) THEN
+              vdw_style(ibox) = 'MIE'
               int_vdw_style(ibox) = vdw_mie
               WRITE(logunit,'(A,2x,A,A,I3)') 'VDW style used is: ',vdw_style(ibox), 'in box:', ibox
               vdw_sum_style(ibox) = line_array(2)
@@ -876,7 +879,7 @@ SUBROUTINE Get_Mixing_Rules
 ! ignored. If no mixing rule is specified, Lorentz-Berthelot is used as default.
 !******************************************************************************
   INTEGER :: ierr,line_nbr,nbr_entries
-  CHARACTER(120) :: line_string, line_array(20)
+  CHARACTER(STRING_LEN) :: line_string, line_array(60)
 
 !******************************************************************************
   REWIND(inputunit)
@@ -949,7 +952,7 @@ SUBROUTINE Get_Molecule_Info
 
   INTEGER :: ierr,line_nbr,nbr_entries, i, openstatus, is, max_index, input_line_nbr
   INTEGER :: mcf_index(5), dummy
-  CHARACTER(120) :: line_string, line_array(20), source_dir
+  CHARACTER(STRING_LEN) :: line_string, line_array(60), source_dir
   LOGICAL :: l_source_dir
 
 !******************************************************************************
@@ -1357,7 +1360,7 @@ SUBROUTINE Get_Atom_Info(is)
   INTEGER, INTENT(IN) :: is
 
   INTEGER :: ierr,line_nbr,nbr_entries, ia
-  CHARACTER(120) :: line_string, line_array(20)
+  CHARACTER(STRING_LEN) :: line_string, line_array(60)
 
 !******************************************************************************
   REWIND(molfile_unit)
@@ -1399,8 +1402,8 @@ SUBROUTINE Get_Atom_Info(is)
         species_list(is)%molecular_weight = 0.0_DP
 
         DO ia = 1,natoms(is)
-           ! Now read the entries on the next lines. There must be at least 8 for
-           ! each atom.
+           ! Now read the entries on the next lines.
+           ! There must be at least 6 for each atom.
            line_nbr = line_nbr + 1
            CALL Parse_String(molfile_unit,line_nbr,6,nbr_entries,line_array,ierr)
 
@@ -1448,7 +1451,38 @@ SUBROUTINE Get_Atom_Info(is)
            species_list(is)%total_charge = species_list(is)%total_charge &
                                          + nonbond_list(ia,is)%charge
 
-           ! Cannot mix "LJ" and "Mie" types
+           ! Check valid VDW types
+           SELECT CASE (nonbond_list(ia,is)%vdw_type)
+
+              CASE ("NONE", "None", "none")
+                 nonbond_list(ia,is)%vdw_type = "NONE"
+                 nbr_vdw_params(is) = 0
+
+              CASE ("LJ", "Lj", "lj")
+                 nonbond_list(ia,is)%vdw_type = "LJ"
+                 nbr_vdw_params(is) = 2
+
+              CASE ("MIE", "Mie", "mie")
+                 nonbond_list(ia,is)%vdw_type = "MIE"
+                 nbr_vdw_params(is) = 4
+
+              CASE DEFAULT
+                 err_msg = ''
+                 err_msg(1) = 'Invalid vdw type ' // TRIM(nonbond_list(ia,is)%vdw_type)
+                 err_msg(2) = 'on line number ' // TRIM(Int_To_String(line_nbr)) // ' of MCF file'
+                 CALL Clean_Abort(err_msg, 'Get_Atom_Info')
+
+           END SELECT
+
+           ! Check for correct number of entries for VDW type
+           IF (nbr_entries < 6 + nbr_vdw_params(is)) THEN
+              err_msg = ''
+              err_msg(1) = 'VDW potential type ' // TRIM(nonbond_list(ia,is)%vdw_type)
+              err_msg(2) = 'requires ' // TRIM(Int_To_String(nbr_vdw_params(is))) //  ' parameters'
+              CALL Clean_Abort(err_msg,'Get_Atom_Info')
+           ENDIF
+
+           ! Cannot mix "LJ" and "MIE" types
            IF (nonbond_list(ia,is)%vdw_type /= "NONE" .AND. &
                nonbond_list(ia,is)%vdw_type /= vdw_style(1)) THEN
               err_msg = ''
@@ -1467,87 +1501,65 @@ SUBROUTINE Get_Atom_Info(is)
            END IF
 
            ! Load vdw parameters, specific for each individual type
-           IF (nonbond_list(ia,is)%vdw_type == 'LJ' .OR. nonbond_list(ia,is)%vdw_type == 'lj') THEN
-              nonbond_list(ia,is)%vdw_type = 'LJ'
-              ! Set number of vdw parameters
-              nbr_vdw_params(is) = 2
+           SELECT CASE (nonbond_list(ia,is)%vdw_type)
 
-              IF (nbr_entries < 6 + nbr_vdw_params(is)) THEN
+              CASE ("NONE")
+                 IF (verbose_log) THEN
+                    WRITE(logunit,'(X,A,I6,1x,I6)') &
+                          'No VDW potential assigned to atom, species: ',ia,is
+                 END IF
+
+              CASE ("LJ")
+                 ! epsilon/kB in K read in
+                 nonbond_list(ia,is)%vdw_param(1) = String_To_Double(line_array(7))
+                 ! sigma = Angstrom
+                  nonbond_list(ia,is)%vdw_param(2) = String_To_Double(line_array(8))
+
+                 IF (verbose_log .AND. natoms(is) < 100) THEN
+                    WRITE(logunit,'(X,A,T25,F10.4)') ' Epsilon / kB in K:', &
+                         nonbond_list(ia,is)%vdw_param(1)
+                    WRITE(logunit,'(X,A,T25,F10.4)') ' Sigma in A:', &
+                         nonbond_list(ia,is)%vdw_param(2)
+                 END IF
+
+                 ! Convert epsilon to atomic units amu A^2/ps^2
+                 nonbond_list(ia,is)%vdw_param(1) = kboltz* nonbond_list(ia,is)%vdw_param(1)
+
+              CASE ("MIE")
+                 ! epsilon/kB in K read in
+                 nonbond_list(ia,is)%vdw_param(1) = String_To_Double(line_array(7))
+                 ! sigma = Angstrom
+                 nonbond_list(ia,is)%vdw_param(2) = String_To_Double(line_array(8))
+                 ! repulsive exponent
+                 nonbond_list(ia,is)%vdw_param(3) = String_To_Double(line_array(9))
+                 ! dispersive exponent
+                 nonbond_list(ia,is)%vdw_param(4) = String_To_Double(line_array(10))
+
+                 IF (verbose_log .AND. natoms(is) < 100) THEN
+                    WRITE(logunit,'(X,A,T25,F10.4)') ' Epsilon / kB in K:', &
+                         nonbond_list(ia,is)%vdw_param(1)
+                    WRITE(logunit,'(X,A,T25,F10.4)') ' Sigma in A:', &
+                         nonbond_list(ia,is)%vdw_param(2)
+                    WRITE(logunit,'(X,A,T25,F10.4)') ' Repulsive exponent:', &
+                         nonbond_list(ia,is)%vdw_param(3)
+                    WRITE(logunit,'(X,A,T25,F10.4)') ' Dispersive exponent:', &
+                         nonbond_list(ia,is)%vdw_param(4)
+                 END IF
+
+                 ! Convert epsilon to atomic units amu A^2/ps^2
+                 nonbond_list(ia,is)%vdw_param(1) = kboltz* nonbond_list(ia,is)%vdw_param(1)
+
+              CASE DEFAULT
                  err_msg = ''
-                 err_msg(1) = 'VDW potential type "LJ" requires 2 parameters'
-                 CALL Clean_Abort(err_msg,'Get_Atom_Info')
-              ENDIF
+                 err_msg(1) = 'Error parsing vdw type ' // TRIM(nonbond_list(ia,is)%vdw_type)
+                 CALL Clean_Abort(err_msg, 'Get_Atom_Info')
 
-              ! epsilon/kB in K read in
-              nonbond_list(ia,is)%vdw_param(1) = String_To_Double(line_array(7))
-              ! sigma = Angstrom
-              nonbond_list(ia,is)%vdw_param(2) = String_To_Double(line_array(8))
-
-              IF (verbose_log .AND. natoms(is) < 100) THEN
-                 WRITE(logunit,'(X,A,T25,F10.4)') ' Epsilon / kB in K:', &
-                      nonbond_list(ia,is)%vdw_param(1)
-                 WRITE(logunit,'(X,A,T25,F10.4)') ' Sigma in A:', &
-                      nonbond_list(ia,is)%vdw_param(2)
-              END IF
-
-              ! Convert epsilon to atomic units amu A^2/ps^2
-              nonbond_list(ia,is)%vdw_param(1) = kboltz* nonbond_list(ia,is)%vdw_param(1)
-
-           ELSEIF (nonbond_list(ia,is)%vdw_type == 'Mie' .OR. nonbond_list(ia,is)%vdw_type == 'mie') THEN
-              nonbond_list(ia,is)%vdw_type = 'Mie'
-              ! Set number of vdw parameters
-              nbr_vdw_params(is) = 4
-
-              IF (nbr_entries < 6 + nbr_vdw_params(is)) THEN
-                 err_msg = ''
-                 err_msg(1) = 'VDW potential type "Mie" requires 4 parameters'
-                 CALL Clean_Abort(err_msg,'Get_Atom_Info')
-              ENDIF
-
-              ! epsilon/kB in K read in
-              nonbond_list(ia,is)%vdw_param(1) = String_To_Double(line_array(7))
-              ! sigma = Angstrom
-              nonbond_list(ia,is)%vdw_param(2) = String_To_Double(line_array(8))
-              ! repulsive exponent
-              nonbond_list(ia,is)%vdw_param(3) = String_To_Double(line_array(9))
-              ! dispersive exponent
-              nonbond_list(ia,is)%vdw_param(4) = String_To_Double(line_array(10))
-
-
-              IF (verbose_log .AND. natoms(is) < 100) THEN
-                 WRITE(logunit,'(X,A,T25,F10.4)') ' Epsilon / kB in K:', &
-                      nonbond_list(ia,is)%vdw_param(1)
-                 WRITE(logunit,'(X,A,T25,F10.4)') ' Sigma in A:', &
-                      nonbond_list(ia,is)%vdw_param(2)
-                 WRITE(logunit,'(X,A,T25,F10.4)') ' Repulsive exponent:', &
-                      nonbond_list(ia,is)%vdw_param(3)
-                 WRITE(logunit,'(X,A,T25,F10.4)') ' Dispersive exponent:', &
-                      nonbond_list(ia,is)%vdw_param(4)
-              END IF
-
-              ! Convert epsilon to atomic units amu A^2/ps^2
-              nonbond_list(ia,is)%vdw_param(1) = kboltz* nonbond_list(ia,is)%vdw_param(1)
-
-           ELSEIF (nonbond_list(ia,is)%vdw_type == 'NONE') THEN
-              ! Set number of vdw parameters
-              nbr_vdw_params(is) = 0
-
-
-              IF (verbose_log) THEN
-
-                 WRITE(logunit,'(X,A,I6,1x,I6)') &
-                      'No VDW potential assigned to atom, species: ',ia,is
-
-              END IF
-
-           ELSE
-              err_msg = ''
-              err_msg(1) = 'vdw_potential type improperly specified in mcf file'
-              CALL Clean_Abort(err_msg,'Get_Atom_Info')
-           ENDIF
+           END SELECT
 
            ! the last entry is 'ring' for ring atoms
+           ! multiring atoms are ID'd in ring_fragment_driver.f90
            nonbond_list(ia,is)%ring_atom = .FALSE.
+           nonbond_list(ia,is)%multiring_atom = .FALSE.
            IF (line_array(nbr_entries) == 'ring') THEN
               nring_atoms(is) = nring_atoms(is) + 1
               ring_atom_ids(nring_atoms(is),is) = ia
@@ -1610,7 +1622,7 @@ SUBROUTINE Get_Bond_Info(is)
   INTEGER, INTENT(IN) :: is
 
   INTEGER :: ierr,line_nbr,nbr_entries, ib
-  CHARACTER(120) :: line_string, line_array(20)
+  CHARACTER(STRING_LEN) :: line_string, line_array(60)
 
 !******************************************************************************
   REWIND(molfile_unit)
@@ -1755,7 +1767,7 @@ SUBROUTINE Get_Angle_Info(is)
   INTEGER, INTENT(IN) :: is
 
   INTEGER :: ierr,line_nbr,nbr_entries, iang, nangles_linear
-  CHARACTER(120) :: line_string, line_array(20)
+  CHARACTER(STRING_LEN) :: line_string, line_array(60)
 
 !******************************************************************************
   REWIND(molfile_unit)
@@ -1930,7 +1942,7 @@ SUBROUTINE Get_Dihedral_Info(is)
   INTEGER, INTENT(IN) :: is
 
   INTEGER :: ierr,line_nbr,nbr_entries, idihed
-  CHARACTER(120) :: line_string, line_array(20)
+  CHARACTER(STRING_LEN) :: line_string, line_array(60)
 
 !******************************************************************************
   REWIND(molfile_unit)
@@ -2160,7 +2172,7 @@ SUBROUTINE Get_Improper_Info(is)
 INTEGER, INTENT(IN) :: is
 
   INTEGER :: ierr,line_nbr,nbr_entries, iimprop
-  CHARACTER(120) :: line_string, line_array(20)
+  CHARACTER(STRING_LEN) :: line_string, line_array(60)
 
 !******************************************************************************
   REWIND(molfile_unit)
@@ -2324,7 +2336,7 @@ SUBROUTINE Get_Fragment_Anchor_Info(is)
 
   INTEGER :: i, line_nbr, ierr, min_entries, nbr_entries, ianchor
 
-  CHARACTER(120) :: line_String,line_array(20)
+  CHARACTER(STRING_LEN) :: line_String,line_array(60)
 
 !******************************************************************************
   WRITE(logunit,*)
@@ -2431,7 +2443,7 @@ SUBROUTINE Get_Fragment_Info(is)
   INTEGER :: nanchors, iatoms, jatoms, ibonds, iatoms_bond
   INTEGER :: i_atom, j_atom, atom1, atom2
   INTEGER, ALLOCATABLE :: anchor_id(:)
-  CHARACTER(120) :: line_string, line_array(20)
+  CHARACTER(STRING_LEN) :: line_string, line_array(60)
   !CHARACTER(50000) :: line_array_zeo(10000)
 
 !******************************************************************************
@@ -2666,7 +2678,7 @@ SUBROUTINE Get_Fragment_Connectivity_Info(is)
   INTEGER :: ierr, line_nbr, ifrag, nbr_entries, i, j, ifrag_connect, frag1, frag2
   INTEGER, ALLOCATABLE :: temp_frag(:)
 
-  CHARACTER(120) :: line_string,line_array(20)
+  CHARACTER(STRING_LEN) :: line_string,line_array(60)
 
   ! Variables for determing prob_del1
   INTEGER :: natoms_del_with_frag1, natoms_del_with_frag2
@@ -2933,7 +2945,7 @@ SUBROUTINE Get_Fragment_File_Info(is)
 
   INTEGER :: ierr, line_nbr, i, j, ifrag, nbr_entries, is
   REAL(DP) :: vdw_cutoff, coul_cutoff
-  CHARACTER(120) :: line_string, line_array(20), source_dir
+  CHARACTER(STRING_LEN) :: line_string, line_array(60), source_dir
   CHARACTER(4) :: ring_flag
   LOGICAL :: l_source_dir
 
@@ -3292,7 +3304,7 @@ END SUBROUTINE Get_Fragment_Coords
 SUBROUTINE Get_Intra_Scaling(is)
 !******************************************************************************
   INTEGER :: ierr,line_nbr,nbr_entries, iimprop, is, i
-  CHARACTER(120) :: line_string, line_array(20)
+  CHARACTER(STRING_LEN) :: line_string, line_array(60)
   LOGICAL :: l_intra_scaling_mcf
 
 !******************************************************************************
@@ -3483,7 +3495,7 @@ SUBROUTINE Get_Box_Info
 !   cubic, orthogonal, cell_metrix
 !******************************************************************************
   INTEGER :: ierr,line_nbr,nbr_entries,ibox, is
-  CHARACTER(120) :: line_string, line_array(20)
+  CHARACTER(STRING_LEN) :: line_string, line_array(60)
   REAL(DP) :: radius, zmax, zmin
 
 !******************************************************************************
@@ -3819,7 +3831,7 @@ SUBROUTINE Get_Temperature_Info
   IMPLICIT NONE
 
   INTEGER :: ierr, line_nbr, i, nbr_entries
-  CHARACTER(120) :: line_string, line_array(20)
+  CHARACTER(STRING_LEN) :: line_string, line_array(60)
 
 !******************************************************************************
   WRITE(logunit,*)
@@ -3900,7 +3912,7 @@ SUBROUTINE Get_Pressure_Info
 !******************************************************************************
 
   INTEGER :: ierr, line_nbr, nbr_entries, i
-  CHARACTER(120) :: line_string, line_array(20)
+  CHARACTER(STRING_LEN) :: line_string, line_array(60)
 
 !******************************************************************************
   WRITE(logunit,*)
@@ -3980,7 +3992,7 @@ SUBROUTINE Get_Chemical_Potential_Info
   IMPLICIT NONE
 
   INTEGER :: line_nbr, nbr_entries, ierr, is, spec_counter, ibox
-  CHARACTER(120) :: line_string, line_array(20)
+  CHARACTER(STRING_LEN) :: line_string, line_array(60)
 
 !******************************************************************************
   REWIND(inputunit)
@@ -4085,7 +4097,7 @@ SUBROUTINE Get_Move_Probabilities
 
   INTEGER :: ierr, nbr_entries, line_nbr, i, j, ibox, is, vol_int
   INTEGER ::  kbox, this_box, first_species, second_species
-  CHARACTER(120) :: line_string, line_array(30), line_string2
+  CHARACTER(STRING_LEN) :: line_string, line_array(60), line_string2
   CHARACTER(4) :: Symbol
   !INTEGER, DIMENSION(:,:), ALLOCATABLE :: swap_list
 
@@ -4766,7 +4778,7 @@ SUBROUTINE Get_Start_Type
 !******************************************************************************
 
   INTEGER :: ierr, line_nbr, nbr_entries, i,j, ibox, is
-  CHARACTER(120) :: line_string, line_array(20)
+  CHARACTER(STRING_LEN) :: line_string, line_array(60)
   CHARACTER(1) :: first_character
   CHARACTER(4) :: symbol
 
@@ -5049,7 +5061,7 @@ SUBROUTINE Get_Run_Type
   IMPLICIT NONE
 
   INTEGER :: ierr, line_nbr, nbr_entries,i, ia
-  CHARACTER(120) :: line_string,line_array(20)
+  CHARACTER(STRING_LEN) :: line_string,line_array(60)
   LOGICAL :: overlap
 
 !******************************************************************************
@@ -5175,7 +5187,7 @@ SUBROUTINE Get_CBMC_Info
 
   INTEGER :: ibox, is
   INTEGER :: ierr, line_nbr, nbr_entries
-  CHARACTER(120) :: line_string,line_array(30)
+  CHARACTER(STRING_LEN) :: line_string,line_array(60)
   LOGICAL :: need_kappa_ins, need_kappa_dih
 
 !******************************************************************************
@@ -5335,7 +5347,7 @@ SUBROUTINE Get_Seed_Info
 !******************************************************************************
 
   INTEGER :: ierr, line_nbr, nbr_entries
-  CHARACTER(120) :: line_string,line_array(20)
+  CHARACTER(STRING_LEN) :: line_string,line_array(60)
 
 !******************************************************************************
   WRITE(logunit,*)
@@ -5400,7 +5412,7 @@ SUBROUTINE Get_Simulation_Length_Info
 !******************************************************************************
 
   INTEGER :: ierr, line_nbr, nbr_entries, ibox
-  CHARACTER(120) :: line_string, line_array(20)
+  CHARACTER(STRING_LEN) :: line_string, line_array(60)
   LOGICAL :: l_run
 
 !******************************************************************************
@@ -5414,6 +5426,7 @@ SUBROUTINE Get_Simulation_Length_Info
   line_nbr = 0
   nthermo_freq = 0
   ncoord_freq = 0
+  int_coord_style = 0
   n_mcsteps = 0
   n_equilsteps = 0
   l_run = .FALSE.
@@ -5485,6 +5498,15 @@ SUBROUTINE Get_Simulation_Length_Info
 
            ELSE IF (line_array(1) == 'coord_freq' .OR. line_array(1) == 'Coord_Freq') THEN
 
+              IF (int_coord_style > 0) THEN
+                 err_msg = ''
+                 err_msg(1) = 'coord_freq and custom_coord_freq have been specified. Line: ' // &
+                              TRIM(Int_To_String(line_nbr)) // ' of the input file.'
+                 err_msg(2) = 'You may only specify one of the two options'
+                 CALL Clean_Abort(err_msg,'Get_Simulation_Length_Info')
+              ENDIF
+
+              int_coord_style = 1
               ncoord_freq = String_To_Int(line_array(2))
 
               ! check that ncoord_freq is positive
@@ -5496,7 +5518,7 @@ SUBROUTINE Get_Simulation_Length_Info
                  CALL Clean_Abort(err_msg,'Get_Simulation_Length_Info')
               END IF
 
-              WRITE(logunit,'(A,T50,I8,X,A)') 'Coordinates will be written every', ncoord_freq, sim_length_units
+              WRITE(logunit,'(A,T50,I8,X,A)') 'Coordinates will be written to file every', ncoord_freq, sim_length_units
 
               ALLOCATE(movie_header_file(nbr_boxes))
               ALLOCATE(movie_xyz_file(nbr_boxes))
@@ -5512,6 +5534,43 @@ SUBROUTINE Get_Simulation_Length_Info
                     movie_xyz_file(ibox) =    TRIM(run_name) // '.box' // TRIM(Int_To_String(ibox)) // '.xyz'
                     WRITE(logunit,'(X,A,T30,I1,A,T40,A)') 'movie header file for box ', ibox ,' is', TRIM(movie_header_file(ibox))
                     WRITE(logunit,'(X,A,T30,I1,A,T40,A)') 'movie_XYZ file for box ', ibox ,' is', TRIM(movie_xyz_file(ibox))
+                 END DO
+              ENDIF
+
+           ELSE IF (line_array(1) == 'custom_coord_freq' .OR. line_array(1) == 'Custom_Coord_Freq') THEN
+
+              IF (int_coord_style > 0) THEN
+                 err_msg = ''
+                 err_msg(1) = 'coord_freq and custom_coord_freq have been specified. Line: ' // &
+                              TRIM(Int_To_String(line_nbr)) // ' of the input file.'
+                 err_msg(2) = 'You may only specify one of the two options'
+                 CALL Clean_Abort(err_msg,'Get_Simulation_Length_Info')
+              ENDIF
+
+              int_coord_style = 2
+              ncoord_freq = String_To_Int(line_array(2))
+              ! check that ncoord_freq is positive
+              IF (ncoord_freq <= 0) THEN
+                 err_msg = ''
+                 err_msg(1) = 'Option ' // TRIM(line_array(2)) // ' for keyword custom_coord_freq on line number ' // &
+                              TRIM(Int_To_String(line_nbr)) // ' of the input file is not supported'
+                 err_msg(2) = 'Supported options are: any positive integer'
+                 CALL Clean_Abort(err_msg,'Get_Simulation_Length_Info')
+              END IF
+
+              WRITE(logunit,'(A,T50,I8,X,A)') 'Coordinates will be written to file every', ncoord_freq, sim_length_units
+
+              ALLOCATE(movie_header_file(nbr_boxes))
+              movie_custom_file =  TRIM(run_name) // '.crd'
+              WRITE(logunit,'(X,A,T40,A)') 'movie file is', TRIM(movie_custom_file)
+              IF (nbr_boxes == 1) THEN
+                 ibox = 1
+                 movie_header_file(ibox) = TRIM(run_name) // '.H'
+                 WRITE(logunit,'(X,A,T40,A)') 'movie header file is', TRIM(movie_header_file(ibox))
+              ELSE
+                 DO ibox = 1, nbr_boxes
+                    movie_header_file(ibox) = TRIM(run_name) // '.box' // TRIM(Int_To_String(ibox)) // '.H'
+                    WRITE(logunit,'(X,A,T30,I1,A,T40,A)') 'movie header file for box ', ibox ,' is', TRIM(movie_header_file(ibox))
                  END DO
               ENDIF
 
@@ -5565,8 +5624,7 @@ SUBROUTINE Get_Simulation_Length_Info
               err_msg = ''
               err_msg(1) = 'Keyword ' // TRIM(line_array(1)) // ' on line number ' // &
                            TRIM(Int_To_String(line_nbr)) // ' of the input file is not supported'
-              err_msg(2) = 'Supported keywords are: prop_freq, coord_freq, run, steps_per_sweep,'
-              err_msg(3) = '                        block_avg_freq, energy_freq'
+              err_msg(2) = 'Supported keywords are: prop_freq, coord_freq, custom_coord_freq, run, steps_per_sweep, block_avg_freq'
               CALL Clean_Abort(err_msg,'Get_Simulation_Length_Info')
 
            END IF
@@ -5645,7 +5703,7 @@ USE Global_Variables, ONLY: cpcollect
 
   INTEGER :: ierr, line_nbr, nbr_properties, max_properties, nbr_entries
   INTEGER :: i, j, this_box, ibox, is, average_id, ifrac
-  CHARACTER(120) :: line_string, line_array(20)
+  CHARACTER(STRING_LEN) :: line_string, line_array(60)
   CHARACTER(12) :: extension
   CHARACTER(9) :: extension1
   CHARACTER(17) :: extension2
@@ -6028,7 +6086,7 @@ SUBROUTINE Copy_Inputfile
 !******************************************************************************
 
   INTEGER :: ierr, line_nbr, line_inputfile_start
-  CHARACTER(120) :: line_string
+  CHARACTER(STRING_LEN) :: line_string
   LOGICAL :: input_startcopy
 
   WRITE(logunit,*)
@@ -6114,7 +6172,7 @@ SUBROUTINE Get_Rcutoff_Low
 !******************************************************************************
 
   INTEGER :: ierr, line_nbr, nbr_entries
-  CHARACTER(120) :: line_string, line_array(20)
+  CHARACTER(STRING_LEN) :: line_string, line_array(60)
 
 !******************************************************************************
   WRITE(logunit,*)
@@ -6175,7 +6233,7 @@ SUBROUTINE Get_File_Info
 
   INTEGER :: ierr, nbr_entries, line_nbr, is
 
-  CHARACTER(120) :: line_array(20), line_string
+  CHARACTER(STRING_LEN) :: line_array(60), line_string
 
 !******************************************************************************
   WRITE(logunit,*)
@@ -6240,7 +6298,7 @@ SUBROUTINE Get_Lattice_File_Info
     IMPLICIT NONE
 
     INTEGER :: line_nbr, ierr, nbr_entries
-    CHARACTER*120 :: line_string, line_array(20)
+    CHARACTER(STRING_LEN) :: line_string, line_array(60)
 
 !******************************************************************************
     WRITE(logunit,*)
@@ -6401,7 +6459,7 @@ SUBROUTINE Get_Verbosity_Info
 !******************************************************************************
 
   INTEGER :: ierr,line_nbr,nbr_entries
-  CHARACTER(120) :: line_string, line_array(20)
+  CHARACTER(STRING_LEN) :: line_string, line_array(60)
 
 !******************************************************************************
   WRITE(logunit,*)

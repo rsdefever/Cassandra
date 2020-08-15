@@ -48,11 +48,13 @@ MODULE Type_Definitions
   !
   ! 03/17/19 (JS) : Activity field defined for species class for GCMC simulations.
   !****************************************************************************
+
+  USE ISO_FORTRAN_ENV
   IMPLICIT NONE
 
   !Create a double precision definition, to make numbers machine independent
-  INTEGER, PARAMETER :: SP = KIND(1.0e0)
-  INTEGER, PARAMETER :: DP = KIND(1.0d0)
+  INTEGER, PARAMETER :: SP = REAL32
+  INTEGER, PARAMETER :: DP = REAL64
 
   ! Specify the limits on the parameters for various intramolecular function classes
   INTEGER, PARAMETER :: max_bond_params = 5
@@ -221,12 +223,12 @@ MODULE Type_Definitions
      REAL(DP), DIMENSION(max_nonbond_params) :: vdw_param
 
      CHARACTER(6) :: element
-     CHARACTER(20) :: atom_name
+     CHARACTER(23) :: atom_name
 
      REAL(DP) :: mass, charge
      INTEGER :: atom_type_number
 
-     LOGICAL :: ring_atom
+     LOGICAL :: ring_atom, multiring_atom
 
   END TYPE Nonbond_Class
   !****************************************************************************

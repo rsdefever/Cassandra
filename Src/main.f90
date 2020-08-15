@@ -106,7 +106,7 @@ PROGRAM Main
 
 !********************************************************************************
 ! Code name and version. Change as updates are made.
-  version = 'Cassandra Version 1.2 20181213'
+  version = 'Cassandra Version 1.2.4'
 ! Get starting time information (intrinsic function)
   CALL DATE_AND_TIME(date,time,zone,begin_values)
   CALL cpu_time(start_time)
@@ -134,6 +134,9 @@ PROGRAM Main
 ! Now read input file and get the run_name
   CALL Get_Run_Name
 
+! Create log file and write out some initial information
+  CALL Name_Files(run_name,'.log',logfile)
+
   OPEN(unit=logunit,file=logfile,IOSTAT=openstatus)
   IF (openstatus .NE. 0) THEN
      err_msg = ""
@@ -150,6 +153,10 @@ PROGRAM Main
   WRITE(logunit,'(A80)')'            \____/\__,_/____/____/\__,_/_/ /_/\__,_/_/   \__,_/                '
   WRITE(logunit,'(A80)')'                                                                               '
   WRITE(logunit,'(A80)')'********************************************************************************'
+  WRITE(logunit,'(A80)')'**********************************Log File**************************************'
+  WRITE(logunit,'(A80)')'********************************************************************************'
+! Create a checkpoint file to periodically write system information
+
   WRITE(logunit,*)
   WRITE(logunit,'(A73)')'For any published work that uses Cassandra, cite the following reference:'
   WRITE(logunit,'(4X,A56)')'Shah JK, Marin‐Rimoldi E, Mullen RG, Keene BP, Khan S,'

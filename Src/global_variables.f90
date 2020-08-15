@@ -87,7 +87,7 @@ USE Type_Definitions
 
   ! The starting seed for the random generator
   ! Note iseed is used for generating points on random sphere for MCF_Gen sim type.
- INTEGER (KIND=8) :: iseed, iseed1, iseed3
+  INTEGER (KIND=8) :: iseed, iseed1, iseed3
 
   ! Variables associated with the nonbond potential
   CHARACTER(15) :: mix_rule, run_type
@@ -108,7 +108,8 @@ USE Type_Definitions
   INTEGER, PARAMETER :: vdw_minimum = 5
   INTEGER, PARAMETER :: vdw_charmm = 6
   INTEGER, PARAMETER :: vdw_cut_switch = 7
-  INTEGER, PARAMETER :: vdw_mie = 8
+  INTEGER, PARAMETER :: vdw_cut_shift_force = 8
+  INTEGER, PARAMETER :: vdw_mie = 9
 
   INTEGER, PARAMETER :: charge_none = 0
   INTEGER, PARAMETER :: charge_coul = 1
@@ -306,7 +307,7 @@ USE Type_Definitions
 
   ! array containing name of each atom type with idex = atomtype number.
   ! It is set and allocated to size nbr_atomtypes in Create_Nonbond_Table
-  CHARACTER(8), DIMENSION(:), ALLOCATABLE :: atom_type_list
+  CHARACTER(23), DIMENSION(:), ALLOCATABLE :: atom_type_list
 
   INTEGER, DIMENSION(:), ALLOCATABLE :: nbr_vdw_params
 
@@ -490,7 +491,7 @@ USE Type_Definitions
   ! Information on the output of data
   INTEGER :: nthermo_freq, ncoord_freq, block_avg_freq, nbr_blocks
   REAL(DP) :: data_points_per_block
-
+  INTEGER :: int_coord_style ! 1 = xyz, 2 = custom
   INTEGER,DIMENSION(:),ALLOCATABLE :: nbr_prop_files
 
   ! Number of properties per file, will have dimension of nbr_prop_files
